@@ -1,0 +1,17 @@
+{
+  "name": "weather",
+  "version": "0.2.0",
+  "authors": [
+    "Daniel Franke <info@df-web.net>"
+  ],
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "bootstrap": "~3.3.4"
+  }
+}
