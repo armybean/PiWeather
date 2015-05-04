@@ -45,12 +45,16 @@ image = Image.new('1', (width, height))
 draw = ImageDraw.Draw(image)
 
 # initialize temperatures
-humidity, temperature = Adafruit_DHT.read_retry(sensor, pin)
+humidity = 0.0
+temperature = 0.0
 
-minTemp = temperature
-maxTemp = temperature
+minTemp = 9999
+maxTemp = -9999
 
+# status variables
+lastTemp = None
 lastInsert = 0
+retries = 0
 
 padding = 2
 top = padding
@@ -71,13 +75,28 @@ try:
 
         if temperature is not None and humidity is not None:
 
+            if lastTemp is None:
+                lastTemp = temperature
+
+            # sometime there are misread values - ignore them, try again after 15 seconds for maximum 4 times
+            if abs(lastTemp - temperature) > 10 and retries < 5:
+                retries += 1
+                time.sleep(15)
+                continue
+
+            # reset retries
+            retries = 0
+
+            # we have a new max temperature
             if temperature > maxTemp:
                 maxTemp = temperature
 
+            # we have a new min temperature
             if temperature < minTemp:
                 minTemp = temperature
 
-            if lastInsert < time.time() - 900:
+            # only insert every 60 seconds to the DB
+            if lastInsert < time.time() - 60:
                 with con:
                     cur = con.cursor()
                     cur.execute("INSERT INTO temperatures (sensor, date, temperature, humidity) VALUES (1, %s, %s, %s)",
