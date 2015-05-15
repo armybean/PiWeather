@@ -1,12 +1,29 @@
 <?php
 
-$pdo = new PDO('mysql:host=localhost;dbname=weather;charset=utf8', 'weather', 'PASSWORD');
+if ( ! is_readable('config.php'))
+{
+    die('No configuration file found. Please rename sample_config.php to config.php and edit the value to fit your setup.');
+}
 
-$datetime = new DateTime();
+require_once 'config.php';
+$db = $config['Database'];
+
+$pdo = new PDO('mysql:host=' . $db['host'] . ';dbname=' . $db['database'] . ';charset=utf8', $db['user'],
+    $db['password']);
+
+// Select all dates
+$stmt = $pdo->prepare("SELECT DISTINCT DATE_FORMAT(`date`, '%d.%m.%Y') AS d FROM temperatures ORDER BY `date` DESC");
+$stmt->execute();
+$dates = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$datetime = (isset($_POST['date']))
+    ? DateTime::createFromFormat('d.m.Y', $_POST['date'])
+    : new DateTime();
 $datetime->setTime(0, 0, 0);
 
-$stmt = $pdo->prepare("SELECT * FROM temperatures WHERE `date` >= ? ORDER BY `date`");
-$stmt->execute([$datetime->format('Y-m-d H:i:s')]);
+$stmt =
+    $pdo->prepare("SELECT * FROM temperatures WHERE `date` >= :d AND `date` < DATE_ADD(:d, INTERVAL 1 DAY) ORDER BY `date`");
+$stmt->execute([':d' => $datetime->format('Y-m-d H:i:s')]);
 
 $temps = $timestamps = $humidities = [];
 $data[0] = ['Zeit', 'Temperatur', 'Luftfeuchtigkeit'];
@@ -22,7 +39,7 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC))
 
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -40,11 +57,19 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC))
 
 <div class="container">
     <div class="header clearfix">
-        <nav>
-            <ul class="nav nav-pills pull-right">
-            </ul>
-        </nav>
-        <h3 class="text-muted">Wetterstation</h3>
+        <h3 class="text-muted pull-left">Wetterstation</h3>
+
+        <form action="index.php" method="post" class="form-inline pull-right">
+            <div class="form-group">
+                <select name="date" id="date" class="form-control">
+                    <?php foreach ($dates as $date): ?>
+                        <option value="<?= $date['d']; ?>" <?= ($datetime->format('d.m.Y') == $date['d']) ? 'selected'
+                            : ''; ?>><?= $date['d']; ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <button class="btn btn-primary" type="submit">Datum ändern</button>
+        </form>
     </div>
 
     <div class="jumbotron">
