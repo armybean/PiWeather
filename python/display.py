@@ -6,6 +6,7 @@ import logging
 import MySQLdb as mdb
 import os
 import pprint
+import RPi.GPIO as GPIO
 import sys
 import time
 
@@ -22,6 +23,7 @@ import ImageFont
 # Configuration                                     #
 # ------------------------------------------------- #
 
+RESET_PIN = 17
 SENSOR_PIN = 18
 RST = 24
 DC = 23
@@ -53,6 +55,10 @@ DB_HOST = settings.get('Database', 'Host')
 DB_USER = settings.get('Database', 'User')
 DB_PASSWORD = settings.get('Database', 'Password')
 DB_DATABASE = settings.get('Database', 'Database')
+
+# Setup GPIO Pin for reset button
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(RESET_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 
 # Initialize Display
 disp.begin()
@@ -108,6 +114,11 @@ try:
 
             # reset retries
             retries = 0
+
+            # reset min and max temperatures if button pressed
+            if GPIO.input(RESET_PIN):
+                maxTemp = -9999.99
+                minTemp = 9999.99
 
             # we have a new max temperature
             if temperature > maxTemp:
