@@ -1,9 +1,12 @@
 #!/usr/bin/python
-#  -*- coding: utf-8 -*-
+# coding=utf-8
 
+import ConfigParser
 import logging
 import MySQLdb as mdb
+import os
 import pprint
+import sys
 import time
 
 import Adafruit_DHT
@@ -35,6 +38,23 @@ disp = Adafruit_SSD1306.SSD1306_128_64(rst=RST, dc=DC, spi=SPI.SpiDev(SPI_PORT, 
 # Initialization                                    #
 # ------------------------------------------------- #
 
+# read config file
+configFile = os.path.dirname(os.path.realpath(__file__)) + '/config.ini'
+
+if not os.path.isfile(configFile):
+    print "No configuration file found."
+    print "Please rename sample_config.ini to config.ini and edit the value to fit your setup."
+    sys.exit()
+
+settings = ConfigParser.ConfigParser()
+settings.read(configFile)
+
+DB_HOST = settings.get('Database', 'Host')
+DB_USER = settings.get('Database', 'User')
+DB_PASSWORD = settings.get('Database', 'Password')
+DB_DATABASE = settings.get('Database', 'Database')
+
+# Initialize Display
 disp.begin()
 disp.clear()
 disp.display()
@@ -51,8 +71,8 @@ draw = ImageDraw.Draw(image)
 humidity = 0.0
 temperature = 0.0
 
-minTemp = 9999
-maxTemp = -9999
+minTemp = 9999.99
+maxTemp = -9999.99
 
 # status variables
 lastTemp = None
@@ -65,7 +85,7 @@ left = padding
 # Load default font.
 font = ImageFont.load_default()
 
-con = mdb.connect('localhost', 'weather', 'PASSWORD', 'weather')
+con = mdb.connect(DB_HOST, DB_USER, DB_PASSWORD, DB_DATABASE)
 logging.basicConfig(filename='weatherstation.log', level=logging.DEBUG)
 
 try:
@@ -81,7 +101,7 @@ try:
                 lastTemp = temperature
 
             # sometime there are misread values - ignore them, try again after 15 seconds for maximum 4 times
-            if abs(lastTemp - temperature) > 10 and retries < 5:
+            if abs(lastTemp - temperature) > 5 and retries < 5:
                 retries += 1
                 time.sleep(15)
                 continue
@@ -97,8 +117,8 @@ try:
             if temperature < minTemp:
                 minTemp = temperature
 
-            # only insert every 60 seconds to the DB
-            if lastInsert < time.time() - 60:
+            # only insert every 5 minutes to the DB
+            if lastInsert < time.time() - 300:
                 with con:
                     cur = con.cursor()
                     cur.execute("INSERT INTO temperatures (sensor, date, temperature, humidity) VALUES (1, %s, %s, %s)",
