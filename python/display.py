@@ -3,20 +3,20 @@
 
 import ConfigParser
 import logging
-import MySQLdb as mdb
 import os
 import pprint
-import RPi.GPIO as GPIO
 import sys
 import time
 
 import Adafruit_DHT
 import Adafruit_GPIO.SPI as SPI
 import Adafruit_SSD1306
-
 import Image
 import ImageDraw
 import ImageFont
+import MySQLdb
+import RPi.GPIO as GPIO
+
 
 
 # ------------------------------------------------- #
@@ -24,17 +24,8 @@ import ImageFont
 # ------------------------------------------------- #
 
 RESET_PIN = 17
-SENSOR_PIN = 18
-RST = 24
-DC = 23
+PADDING = 2  # Padding on the display
 
-SPI_PORT = 0
-SPI_DEVICE = 0
-
-padding = 2  # Padding on the display
-
-sensor = Adafruit_DHT.DHT22
-disp = Adafruit_SSD1306.SSD1306_128_64(rst=RST, dc=DC, spi=SPI.SpiDev(SPI_PORT, SPI_DEVICE, max_speed_hz=8000000))
 
 # ------------------------------------------------- #
 # Initialization                                    #
@@ -51,10 +42,20 @@ if not os.path.isfile(configFile):
 settings = ConfigParser.ConfigParser()
 settings.read(configFile)
 
-DB_HOST = settings.get('Database', 'Host')
-DB_USER = settings.get('Database', 'User')
-DB_PASSWORD = settings.get('Database', 'Password')
-DB_DATABASE = settings.get('Database', 'Database')
+host = settings.get('Database', 'Host')
+user = settings.get('Database', 'User')
+password = settings.get('Database', 'Password')
+database = settings.get('Database', 'Database')
+
+rst = settings.get('Display', 'RST')
+dc = settings.get('Display', 'DC')
+spiPort = settings.get('Display', 'SPI_PORT')
+spiDevice = settings.get('Display', 'SPI_DEVICE')
+
+sensor = Adafruit_DHT.DHT22
+sensorPin = settings.get('Sensor', 'Pin')
+
+disp = Adafruit_SSD1306.SSD1306_128_64(rst=rst, dc=dc, spi=SPI.SpiDev(spiPort, spiDevice, max_speed_hz=8000000))
 
 # Setup GPIO Pin for reset button
 GPIO.setmode(GPIO.BCM)
@@ -85,13 +86,13 @@ lastTemp = None
 lastInsert = 0
 retries = 0
 
-top = padding
-left = padding
+top = PADDING
+left = PADDING
 
 # Load default font.
 font = ImageFont.load_default()
 
-con = mdb.connect(DB_HOST, DB_USER, DB_PASSWORD, DB_DATABASE)
+con = MySQLdb.connect(host, user, password, database)
 logging.basicConfig(filename='weatherstation.log', level=logging.DEBUG)
 
 try:
@@ -99,7 +100,7 @@ try:
         # Draw a black filled box to clear the image.
         draw.rectangle((0, 0, width, height), outline=0, fill=0)
 
-        humidity, temperature = Adafruit_DHT.read_retry(sensor, SENSOR_PIN)
+        humidity, temperature = Adafruit_DHT.read_retry(sensor, sensorPin)
 
         if temperature is not None and humidity is not None:
 
