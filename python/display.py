@@ -5,18 +5,16 @@ import ConfigParser
 import logging
 import os
 import pprint
+import subprocess
 import sys
 import time
 
-import Adafruit_DHT
 import Adafruit_GPIO.SPI as SPI
 import Adafruit_SSD1306
 import Image
 import ImageDraw
 import ImageFont
-import MySQLdb
 import RPi.GPIO as GPIO
-
 
 
 # ------------------------------------------------- #
@@ -31,8 +29,10 @@ PADDING = 2  # Padding on the display
 # Initialization                                    #
 # ------------------------------------------------- #
 
+path = os.path.dirname(os.path.realpath(__file__))
+
 # read config file
-configFile = os.path.dirname(os.path.realpath(__file__)) + '/config.ini'
+configFile = path + '/config.ini'
 
 if not os.path.isfile(configFile):
     print "No configuration file found."
@@ -42,24 +42,16 @@ if not os.path.isfile(configFile):
 settings = ConfigParser.ConfigParser()
 settings.read(configFile)
 
-host = settings.get('Database', 'Host')
-user = settings.get('Database', 'User')
-password = settings.get('Database', 'Password')
-database = settings.get('Database', 'Database')
-
-rst = settings.get('Display', 'RST')
-dc = settings.get('Display', 'DC')
-spiPort = settings.get('Display', 'SPI_PORT')
-spiDevice = settings.get('Display', 'SPI_DEVICE')
-
-sensor = Adafruit_DHT.DHT22
-sensorPin = settings.get('Sensor', 'Pin')
+rst = int(settings.get('Display', 'RST'))
+dc = int(settings.get('Display', 'DC'))
+spiPort = int(settings.get('Display', 'SPI_PORT'))
+spiDevice = int(settings.get('Display', 'SPI_DEVICE'))
 
 disp = Adafruit_SSD1306.SSD1306_128_64(rst=rst, dc=dc, spi=SPI.SpiDev(spiPort, spiDevice, max_speed_hz=8000000))
 
 # Setup GPIO Pin for reset button
 GPIO.setmode(GPIO.BCM)
-GPIO.setup(RESET_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+GPIO.setup(RESET_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 # Initialize Display
 disp.begin()
@@ -85,6 +77,7 @@ maxTemp = -9999.99
 lastTemp = None
 lastInsert = 0
 retries = 0
+line = None
 
 top = PADDING
 left = PADDING
@@ -92,32 +85,35 @@ left = PADDING
 # Load default font.
 font = ImageFont.load_default()
 
-con = MySQLdb.connect(host, user, password, database)
-logging.basicConfig(filename='weatherstation.log', level=logging.DEBUG)
+logging.basicConfig(filename=path + '/log_weatherstation.log', level=logging.DEBUG)
+
+sensorFile = path + '/sensor.dat'
+
+subprocess.Popen(['python', path + '/sensor.py'])
 
 try:
     while 1:
         # Draw a black filled box to clear the image.
         draw.rectangle((0, 0, width, height), outline=0, fill=0)
 
-        humidity, temperature = Adafruit_DHT.read_retry(sensor, sensorPin)
+        if not os.path.isfile(sensorFile):
+            draw.text((left, top), 'Frage Sensor ab...', font=font, fill=255)
+            time.sleep(15)
+            continue
+
+        f = open(sensorFile, 'r')
+        line = f.readline().replace('\n', '')
+
+        if line is None or line == '':
+            continue
+
+        temperature, humidity = [float(value) for value in line.split(':')]
+        f.close()
 
         if temperature is not None and humidity is not None:
 
-            if lastTemp is None:
-                lastTemp = temperature
-
-            # sometime there are misread values - ignore them, try again after 15 seconds for maximum 4 times
-            if abs(lastTemp - temperature) > 5 and retries < 5:
-                retries += 1
-                time.sleep(15)
-                continue
-
-            # reset retries
-            retries = 0
-
             # reset min and max temperatures if button pressed
-            if GPIO.input(RESET_PIN):
+            if not GPIO.input(RESET_PIN):
                 maxTemp = -9999.99
                 minTemp = 9999.99
 
@@ -129,15 +125,6 @@ try:
             if temperature < minTemp:
                 minTemp = temperature
 
-            # only insert every 5 minutes to the DB
-            if lastInsert < time.time() - 300:
-                with con:
-                    cur = con.cursor()
-                    cur.execute("INSERT INTO temperatures (sensor, date, temperature, humidity) VALUES (1, %s, %s, %s)",
-                                (time.strftime('%Y-%m-%d %H:%M:%S'), "{: f}".format(temperature),
-                                 "{: f}".format(humidity)))
-                lastInsert = time.time()
-
             # Write two lines of text.
             draw.text((left, top), time.strftime("%d.%m.%Y %H:%M"), font=font, fill=255)
             draw.text((left, top + 20), '{0:.1f} *C  {1:.1f} % LF'.format(temperature, humidity), font=font, fill=255)
@@ -148,10 +135,11 @@ try:
             disp.image(image)
             disp.display()
 
-        time.sleep(15)
+        time.sleep(.1)
 
 except:
     logging.info(time.strftime("%d.%m.%Y %H:%M"))
+    logging.debug(pprint.pprint(line))
     logging.debug(pprint.pprint(temperature))
     logging.debug(pprint.pprint(humidity))
     raise
